@@ -1,0 +1,312 @@
+#include "Methodes.h"
+#include <string>
+#include <iostream>
+
+using namespace std;
+using namespace Eigen;
+
+
+//constructeur par défaut
+Methodes::Methodes(MatrixXd & A, VectorXd & b, VectorXd & x0, double erreur, int kmax)
+{
+	_A=A;
+	_b=b;
+	_erreur=erreur;
+	_kmax=kmax;
+	_x0=x0;
+}
+
+//destructeur par défaut
+Methodes::~Methodes()
+{}
+
+void Methodes::InitialisationFichier(const string nom_fichier)
+{
+	_fichier.open(nom_fichier);
+}
+
+void Methodes::Ecriture(int k, double erreur)
+{
+	_fichier << k << " " << erreur << endl;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//Sous classe Jacobi
+////////////////////////////////////////////////////////////////////////////////
+
+//constructeur
+Jacobi::Jacobi(MatrixXd & A, VectorXd & b, VectorXd & x0, double erreur, int kmax) : Methodes(A, b, x0, erreur, kmax)
+{}
+
+//Algorithme générique
+void Jacobi::AlgoGene()
+{
+	InitialisationFichier("Jacobi.txt");
+	VectorXd r = _b - _A*_x0;
+	int k = 0;
+	_x = _x0;
+	MatrixXd D = MatrixXd::Zero(_b.size(),_b.size());
+	MatrixXd Dinv = MatrixXd::Zero(_b.size(),_b.size());
+	for (int i = 0 ; i < _b.size() ; i++)
+	{
+		D(i,i) = _A(i,i);
+		if (_A(i,i) == 0)
+		{
+			cout << "------------------------------------" << endl;
+			cout << "ERREUR : la matrice A est mauvaise" << endl;
+			cout << "------------------------------------" << endl;
+			break;
+		}
+		Dinv(i,i) = 1./_A(i,i);
+	}
+	Ecriture(0, r.norm());
+	while ((r.norm() > _erreur) && (k <= _kmax))
+	{
+		k += 1;
+		_x = Dinv*(D-_A)*_x + Dinv*_b;
+		r = _b - _A*_x;
+		Ecriture(k, r.norm());
+	}
+	cout << "La méthode de Jacobi à AX=b converge avec une erreur de : " << r.norm() << endl;
+	if (k > _kmax)
+	{
+		cout << "       /!\ /!\ /!\\" << endl;
+		cout << "Tolérance non atteinte : " << r.norm() << endl;
+		cout << "       /!\ /!\ /!\\" << endl;
+	}
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+//Sous classe Gradient à pas Optimal
+////////////////////////////////////////////////////////////////////////////////
+
+//constructeur
+GradientOptimal::GradientOptimal(MatrixXd & A, VectorXd & b, VectorXd & x0, double erreur, int kmax) : Methodes(A, b, x0, erreur, kmax)
+{}
+
+//Algorithme générique
+void GradientOptimal::AlgoGene()
+{
+	InitialisationFichier("GradientOptimal.txt");
+	VectorXd r = _b - _A*_x0;
+	int k = 0;
+	_x = _x0;
+	VectorXd z;
+	double alpha;
+	Ecriture(0, r.norm());
+	while ((r.norm() > _erreur) && (k <= _kmax))
+	{
+		k += 1;
+		z = _A*r;
+		alpha = r.dot(r)/(z.dot(r));
+		_x += alpha*r;
+		r -= alpha*z;
+		Ecriture(k, r.norm());
+	}
+	cout << "La méthode du gradient à pas optimal à AX=b converge avec une erreur de : " << r.norm() << endl;
+	if (k > _kmax)
+	{
+		cout << "       /!\ /!\ /!\\" << endl;
+		cout << "Tolérance non atteinte : " << r.norm() << endl;
+		cout << "       /!\ /!\ /!\\" << endl;
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//Sous classe Résidu minimum
+////////////////////////////////////////////////////////////////////////////////
+
+//constructeur
+ResiduMinimum::ResiduMinimum(MatrixXd & A, VectorXd & b, VectorXd & x0, double erreur, int kmax) : Methodes(A, b, x0, erreur, kmax)
+{}
+
+//Algorithme du résidu minimum
+void ResiduMinimum::AlgoGene()
+{
+	InitialisationFichier("ResiduMinimum.txt");
+	VectorXd r = _b - _A*_x0;
+	int k = 0;
+	_x = _x0;
+	VectorXd z = VectorXd::Zero(_b.size());
+	double alpha = 0.;
+	Ecriture(0, r.norm());
+	while ((r.norm() > _erreur) && (k <= _kmax))
+	{
+		k += 1;
+		z = _A*r;
+		alpha = r.dot(z)/z.dot(z);
+		_x += alpha*r;
+		r -= alpha*z;
+		Ecriture(k, r.norm());
+	}
+	cout << "La méthode du résidu minimum à AX=b converge avec une erreur de : " << r.norm() << endl;
+	if (k > _kmax)
+	{
+		cout << "       /!\ /!\ /!\\" << endl;
+		cout << "Tolérance non atteinte : " << r.norm() << endl;
+		cout << "       /!\ /!\ /!\\" << endl;
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//Sous classe GMRes
+////////////////////////////////////////////////////////////////////////////////
+
+//Constructeur
+GMRes::GMRes(MatrixXd & A, VectorXd & b, VectorXd & x0, double erreur, int kmax) : Methodes(A, b, x0, erreur, kmax)
+{}
+
+//destructeur
+GMRes::~GMRes()
+{}
+
+//Algorithme d'Arnoldi (Gram-Schmidt) - version naïve + méthode de G
+void GMRes::Arnoldi(VectorXd & v, VectorXd & g, MatrixXd & Vm, MatrixXd & H, MatrixXd & R)
+{
+	int n = _b.size();
+	int m = g.size()-1;
+	VectorXd z = VectorXd::Zero(n);
+	Vm.col(0) = v/(v.norm());
+	VectorXd s = VectorXd::Zero(n);
+	//---------------------------------------
+	_Cos = VectorXd::Zero(m);
+	_Sin = VectorXd::Zero(m);
+	//---------------------------------------
+	for (int j = 0 ; j < m ; j++)
+	{
+		cout.flush();
+		cout << "			         Progression d'Arnoldi : " << (double)j/(double)m*100 << "% \r";
+		s = VectorXd::Zero(n);
+		for (int i = 0 ; i < j+1 ; i++)
+		{
+			H(i,j) = (_A*(Vm.col(j))).dot(Vm.col(i));
+			s += H(i,j)*(Vm.col(i));
+		}
+		z = _A*(Vm.col(j)) - s;
+		H(j+1,j) = z.norm();
+		//---------------------------------------
+		//Création de la j+1 ième colonne de Rj+1
+		_Hc = H.block(0,j,j+2,1);
+		for (int i = 0 ; i < j ; i++)
+		{
+			rotation(i, _Hc);
+		}
+		R.block(0,j,j+2,1) = _Hc;
+		_Cos(j) = R(j,j)/(sqrt(R(j,j)*R(j,j)+R(j+1,j)*R(j+1,j)));
+		_Sin(j) = -R(j+1,j)/(sqrt(R(j,j)*R(j,j)+R(j+1,j)*R(j+1,j)));
+		if (j==0)
+		{
+			R(j,j) = sqrt(R(j,j)*R(j,j)+R(j+1,j)*R(j+1,j));
+		}
+		R(j+1,j) = 0.;
+		if (j!=m-1)
+		{
+			rotation(j, g);
+		}
+		//---------------------------------------
+		if (H(j+1,j) == 0)
+		{
+			break;
+		}
+		Vm.col(j+1) = z/H(j+1,j);
+	}
+}
+
+void GMRes::rotation(int i, VectorXd & v)
+{
+	VectorXd v1 = v;
+	v(i) = _Cos(i)*v1(i) - _Sin(i)*v1(i+1);
+	v(i+1) = _Sin(i)*v1(i) + _Cos(i)*v1(i+1);
+}
+
+
+//Calcul de Argmin
+void GMRes::ArgMin(double beta, VectorXd & g, VectorXd & y, MatrixXd & R)
+{
+	int n = _b.size();
+	int m = g.size();
+	double s;
+	g = beta*g;
+	y(m-1) = g(m-1)/R(m-1,m-1);
+	for (int j = m-2 ; j >= 0  ; j--)
+	{
+		s = 0.;
+		for (int i = j+1 ; i < m ; i++)
+		{
+			s += y(i)*R(j,i);
+		}
+		y(j) = (g(j) - s)/R(j,j);
+	}
+}
+
+
+//Algorithme de GMRes
+void GMRes::AlgoGene()
+{
+	//tailles pour les Matrices
+	int n = _b.size();
+	int m;
+	cout << "------------------------------------" << endl;
+	cout << "Valeur du paramètre de GMRes, m = " << endl;
+	cin >> m;
+	cout << "------------------------------------" << endl;
+
+
+	//variables d'Arnoldi
+	_H = MatrixXd::Zero(m+1,m);
+	_Vm = MatrixXd::Zero(n,m+1);
+	_R = MatrixXd::Zero(m+1,m);
+	_y = VectorXd::Zero(m);
+	VectorXd _g = VectorXd::Zero(m+1);
+	_g(0) = 1.;
+
+	//variables de la résolution
+	VectorXd _e = VectorXd::Zero(m+1);
+	_e(0) = 1.;
+
+	//redimentionnement
+	MatrixXd _R_ = MatrixXd::Zero(m,m);
+	MatrixXd _H_ = MatrixXd::Zero(m,m);
+	MatrixXd _Vm_ = MatrixXd::Zero(n,m);
+	VectorXd _g_ = VectorXd::Zero(m);
+
+	InitialisationFichier("GMRes.txt");
+	VectorXd r = _b - _A*_x0;
+	double beta = r.norm();
+	int k = 0;
+	_x = _x0;
+	Ecriture(0, r.norm());
+	while ((beta > _erreur) && (k <= _kmax))
+	{
+		cout.flush();
+		cout << "Progression générale : " << (double)k/(double)_kmax*100 << "%" << " \r";
+		k += 1;
+		Arnoldi(r,_g,_Vm,_H,_R);
+		_H_ = _H.block(0,0,m,m);
+		_g_ = _g.head(m);
+		_R_ = _R.block(0,0,m,m);
+		_Vm_ = _Vm.block(0,0,n,m);
+
+		ArgMin(beta,_g_,_y,_R_);
+
+		_x +=  _Vm_*_y;
+
+		r = _b - _A*_x;
+		Ecriture(k, r.norm());
+		_g = _e;
+		_y = VectorXd::Zero(m);
+		beta = r.norm();
+
+	}
+	cout << "La méthode GMRes à AX=b converge avec une erreur de : " << beta << endl;
+	if (k > _kmax)
+	{
+		cout << "       /!\ /!\ /!\\" << endl;
+		cout << "Tolérance non atteinte : " << r.norm() << endl;
+		cout << "       /!\ /!\ /!\\" << endl;
+	}
+}
