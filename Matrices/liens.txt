@@ -1,0 +1,11 @@
+BCSSTK18:
+http://math.nist.gov/MatrixMarket/data/Harwell-Boeing/bcsstruc2/bcsstk18.html#download
+
+FIDAPM37:
+http://math.nist.gov/MatrixMarket/data/SPARSKIT/fidap/fidapm37.html
+
+FS 760 3:
+http://math.nist.gov/MatrixMarket/data/Harwell-Boeing/facsimile/fs_760_3.html
+
+FS 541 4:
+http://math.nist.gov/MatrixMarket/data/Harwell-Boeing/smtape/fs_541_4.html
